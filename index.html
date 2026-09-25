@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1B2440">
+<title>Kartu Stok Gudang · Hungry Bird</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   KONFIGURASI: tempel URL Web App (hasil Deploy) di bawah ini.
+   ============================================================ */
+:root{
+  --navy:#1B2440; --paper:#F5F6F8; --card:#FFFFFF; --ink:#1B2440; --muted:#6A7185;
+  --line:#DCE0E8; --in:#1E7B4F; --in-soft:#E3F2EA; --out:#B23B2A; --out-soft:#F8E6E2;
+  --low:#C58A12; --low-soft:#FBF1DC;
+  --mode:var(--in); --mode-soft:var(--in-soft);
+  --font:'Atkinson Hyperlegible',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+body.out{ --mode:var(--out); --mode-soft:var(--out-soft); }
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:var(--font);background:var(--paper);color:var(--ink);font-size:16px;line-height:1.4;
+  -webkit-tap-highlight-color:transparent}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid #6C8CFF;outline-offset:2px}
+.hidden{display:none!important}
+
+/* ---------- Login ---------- */
+#login{min-height:100%;display:flex;flex-direction:column;justify-content:center;padding:32px 24px;
+  padding-top:calc(32px + env(safe-area-inset-top));background:var(--navy);color:#fff}
+#login h1{font-size:30px;line-height:1.1;margin:0 0 6px}
+#login p{margin:0 0 28px;color:#B9C0D4}
+#login label{display:block;font-size:14px;color:#B9C0D4;margin:16px 0 6px}
+#login input{width:100%;padding:14px;border-radius:10px;border:0;font-size:18px;color:var(--ink)}
+#login button{margin-top:28px;width:100%;padding:16px;border:0;border-radius:10px;background:#fff;
+  color:var(--navy);font-weight:700;font-size:18px}
+#loginErr{color:#FFB4A8;margin-top:14px;min-height:22px}
+
+/* ---------- Header / mode switch ---------- */
+header{position:sticky;top:0;z-index:5;background:var(--mode);color:#fff;
+  padding:calc(10px + env(safe-area-inset-top)) 16px 14px;transition:background .25s}
+.top{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.top h1{font-size:18px;margin:0}
+.who{font-size:14px;opacity:.85;background:none;border:0;color:#fff;padding:4px 0;text-decoration:underline;
+  text-underline-offset:3px}
+.switch{display:grid;grid-template-columns:1fr 1fr;margin-top:12px;background:rgba(0,0,0,.22);
+  border-radius:12px;padding:4px}
+.switch button{border:0;background:none;color:#fff;padding:12px 8px;border-radius:9px;font-weight:700;font-size:17px;
+  opacity:.75}
+.switch button[aria-pressed="true"]{background:#fff;color:var(--mode);opacity:1}
+.tabs{display:flex;gap:18px;margin-top:12px}
+.tabs button{background:none;border:0;color:#fff;opacity:.7;padding:4px 0;font-size:15px;border-bottom:2px solid transparent}
+.tabs button[aria-selected="true"]{opacity:1;border-bottom-color:#fff}
+
+/* ---------- Input view ---------- */
+.bar{display:flex;gap:10px;align-items:center;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--line)}
+.bar label{font-size:14px;color:var(--muted)}
+.bar input[type=date]{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#fff}
+.search{position:sticky;z-index:4;padding:10px 16px;background:var(--paper)}
+.search input{width:100%;padding:14px 14px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:17px}
+#list{list-style:none;margin:0;padding:0 16px 120px}
+#list li{margin:0}
+.item{width:100%;display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;
+  background:var(--card);border:0;border-bottom:1px solid var(--line);padding:14px 4px}
+.item .nm{font-weight:700}
+.item .sub{font-size:14px;color:var(--muted)}
+.saldo{text-align:right;white-space:nowrap}
+.saldo b{font-size:18px}
+.saldo small{display:block;font-size:13px;color:var(--muted)}
+.item.low .saldo b{color:var(--low)}
+.flag{display:inline-block;font-size:12px;font-weight:700;color:var(--low);background:var(--low-soft);
+  padding:1px 7px;border-radius:5px;margin-left:6px;vertical-align:1px}
+.inCart{font-size:13px;color:var(--mode);font-weight:700}
+.empty{padding:40px 8px;color:var(--muted);text-align:center}
+
+/* ---------- Bottom bar ---------- */
+.dock{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--card);border-top:1px solid var(--line);
+  padding:12px 16px calc(12px + env(safe-area-inset-bottom));display:flex;gap:10px;align-items:center}
+.dock .count{flex:1;font-size:15px;color:var(--muted)}
+.dock .count b{color:var(--ink);font-size:17px}
+.btn{border:0;border-radius:10px;padding:14px 18px;font-weight:700;font-size:17px}
+.btn.primary{background:var(--navy);color:#fff}
+.btn.mode{background:var(--mode);color:#fff}
+.btn.ghost{background:none;border:1px solid var(--line)}
+.btn:disabled{opacity:.4}
+
+/* ---------- Sheets (bottom drawers) ---------- */
+.scrim{position:fixed;inset:0;background:rgba(27,36,64,.45);z-index:10;display:flex;align-items:flex-end}
+.sheet{background:var(--card);width:100%;max-height:92%;overflow:auto;border-radius:16px 16px 0 0;
+  padding:20px 16px calc(20px + env(safe-area-inset-bottom));animation:up .2s ease-out}
+@keyframes up{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.sheet{animation:none}header{transition:none}}
+.sheet h2{margin:0 0 2px;font-size:21px}
+.sheet .meta{color:var(--muted);font-size:15px;margin-bottom:4px}
+.tipe{display:inline-block;font-weight:700;font-size:13px;padding:2px 8px;border-radius:5px;color:#fff;background:var(--mode)}
+.qty{display:grid;grid-template-columns:64px 1fr 64px;gap:10px;margin:18px 0 6px}
+.qty button{border:1px solid var(--line);background:#fff;border-radius:10px;font-size:28px;font-weight:700;height:64px}
+.qty input{text-align:center;font-size:30px;font-weight:700;border:2px solid var(--mode);border-radius:10px;height:64px;width:100%}
+.unit{text-align:center;color:var(--muted);font-size:15px}
+.warn{background:var(--low-soft);color:#7A5305;border-radius:8px;padding:10px 12px;font-size:15px;margin-top:12px}
+.field{margin-top:16px}
+.field label{display:block;font-size:14px;color:var(--muted);margin-bottom:6px}
+.field input{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;font-size:16px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.chips button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 14px;font-size:15px}
+.chips button[aria-pressed="true"]{background:var(--mode-soft);border-color:var(--mode);color:var(--mode);font-weight:700}
+.actions{display:grid;grid-template-columns:1fr 2fr;gap:10px;margin-top:22px}
+
+/* ---------- Cart & history ---------- */
+.lines{list-style:none;margin:14px 0 0;padding:0}
+.lines li{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
+.lines .txt{flex:1}
+.lines .txt small{display:block;color:var(--muted);font-size:14px}
+.lines .q{font-weight:700;white-space:nowrap}
+.lines .del{border:0;background:none;color:var(--out);font-size:15px;padding:8px}
+.t-in{color:var(--in);font-weight:700}
+.t-out{color:var(--out);font-weight:700}
+#history{padding:8px 16px 40px}
+#history ul{list-style:none;margin:0;padding:0}
+#history li{padding:12px 0;border-bottom:1px solid var(--line);display:flex;gap:12px}
+#history .d{width:56px;color:var(--muted);font-size:14px;flex:none}
+#history .body{flex:1}
+#history small{display:block;color:var(--muted);font-size:13px}
+
+/* ---------- Toast ---------- */
+#toast{position:fixed;left:16px;right:16px;bottom:calc(92px + env(safe-area-inset-bottom));z-index:20;
+  background:var(--navy);color:#fff;border-radius:10px;padding:14px 16px;font-size:16px;text-align:center}
+#toast.err{background:var(--out)}
+.loading{padding:40px;text-align:center;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<!-- ================= LOGIN ================= -->
+<section id="login" class="hidden">
+  <h1>Kartu Stok Gudang</h1>
+  <p>Hungry Bird · catat barang masuk dan keluar gudang</p>
+  <label for="inPin">PIN gudang</label>
+  <input id="inPin" inputmode="numeric" type="password" placeholder="4 digit dari supervisor">
+  <button id="btnLogin">Masuk</button>
+  <div id="loginErr" role="alert"></div>
+</section>
+
+<!-- ================= APP ================= -->
+<section id="app" class="hidden">
+  <header>
+    <div class="top">
+      <h1>Kartu Stok Gudang</h1>
+      <button class="who" id="btnWho">Keluar</button>
+    </div>
+    <div class="switch" role="group" aria-label="Jenis transaksi">
+      <button id="mIn" aria-pressed="true">Barang masuk</button>
+      <button id="mOut" aria-pressed="false">Barang keluar</button>
+    </div>
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tInput" aria-selected="true">Input</button>
+      <button role="tab" id="tHist" aria-selected="false">Riwayat</button>
+    </div>
+  </header>
+
+  <div id="viewInput">
+    <div class="bar">
+      <label for="inDate">Tanggal</label>
+      <input type="date" id="inDate">
+    </div>
+    <div class="search"><input id="inSearch" type="search" placeholder="Cari item…" autocomplete="off"></div>
+    <ul id="list"><li class="loading">Memuat daftar item…</li></ul>
+  </div>
+
+  <div id="viewHist" class="hidden"><div id="history"><div class="loading">Memuat riwayat…</div></div></div>
+
+  <div class="dock" id="dock">
+    <div class="count" id="cartCount">Belum ada item di daftar</div>
+    <button class="btn primary" id="btnReview" disabled>Cek & kirim</button>
+  </div>
+</section>
+
+<!-- Item sheet -->
+<div class="scrim hidden" id="itemScrim">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="itName">
+    <span class="tipe" id="itTipe">MASUK</span>
+    <h2 id="itName"></h2>
+    <div class="meta" id="itMeta"></div>
+    <div class="qty">
+      <button id="qMinus" aria-label="Kurangi">−</button>
+      <input id="qVal" inputmode="decimal" autocomplete="off" aria-label="Jumlah">
+      <button id="qPlus" aria-label="Tambah">+</button>
+    </div>
+    <div class="unit" id="itUnit"></div>
+    <div class="warn hidden" id="itWarn"></div>
+    <div class="field">
+      <label id="srcLabel">Dari</label>
+      <div class="chips" id="srcChips"></div>
+      <input id="srcVal" placeholder="Tulis kalau tidak ada di pilihan">
+    </div>
+    <div class="field">
+      <label for="ketVal">Catatan (opsional)</label>
+      <input id="ketVal" placeholder="mis. no. nota, kondisi barang">
+    </div>
+    <div class="actions">
+      <button class="btn ghost" id="itCancel">Batal</button>
+      <button class="btn mode" id="itAdd">Tambah ke daftar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Review sheet -->
+<div class="scrim hidden" id="cartScrim">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="cartTitle">
+    <h2 id="cartTitle">Cek sebelum kirim</h2>
+    <div class="meta" id="cartMeta"></div>
+    <ul class="lines" id="cartLines"></ul>
+    <div class="field">
+      <label for="staffName">Nama kamu (dicatat di Keterangan)</label>
+      <input id="staffName" autocomplete="off" placeholder="mis. Putu">
+      <div id="staffErr" role="alert" style="color:var(--out);font-size:14px;margin-top:6px"></div>
+    </div>
+    <div class="actions">
+      <button class="btn ghost" id="cartBack">Kembali</button>
+      <button class="btn primary" id="cartSend">Kirim ke gudang</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="hidden" role="status"></div>
+
+<script>
+/* ================== KONFIGURASI ================== */
+const API_URL = 'https://script.google.com/macros/s/AKfycbxvmc1md8u5oeZ8IqYDLkeO4KzmnOwNC_NKsvREE68uqQ6Xn1JLjpuuXBDF5wp1lZ1X/exec'; // https://script.google.com/macros/s/..../exec
+const OUT_TUJUAN = ['Bar', 'Floor', 'Kitchen', 'Rusak/Expired', 'Retail'];
+const IN_SUMBER_TAMBAHAN = ['Produksi/Bikin Sendiri', 'Retur'];
+/* ================================================= */
+
+const $ = id => document.getElementById(id);
+const LS = { name: 'hbg_name', pin: 'hbg_pin' };
+const state = { items: [], mode: 'IN', cart: [], sid: newSid(), current: null, src: '', today: '' };
+
+function newSid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function num(v){ const n = Number(String(v).replace(',', '.')); return isFinite(n) ? n : NaN; }
+function fmt(n){ if (n === null || n === undefined || n === '') return '–'; const r = Math.round(n * 100) / 100; return String(r).replace('.', ','); }
+function store(k, v){ try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch(e){} }
+function load(k){ try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } }
+
+/* ---------- JSONP (Apps Script tidak kirim header CORS) ---------- */
+function api(params){
+  return new Promise((resolve, reject) => {
+    const cb = 'cb_' + newSid();
+    const s = document.createElement('script');
+    const timer = setTimeout(() => { done(); reject(new Error('Koneksi lambat. Cek sinyal lalu coba lagi.')); }, 25000);
+    function done(){ clearTimeout(timer); delete window[cb]; s.remove(); }
+    window[cb] = data => { done(); data && data.ok ? resolve(data) : reject(new Error((data && data.error) || 'Gagal memproses.')); };
+    s.onerror = () => { done(); reject(new Error('Tidak bisa terhubung ke server.')); };
+    const q = new URLSearchParams({ ...params, pin: load(LS.pin), callback: cb });
+    s.src = API_URL + '?' + q.toString();
+    document.body.appendChild(s);
+  });
+}
+
+function toast(msg, isErr){
+  const t = $('toast'); t.textContent = msg; t.className = isErr ? 'err' : '';
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.add('hidden'), isErr ? 5000 : 3000);
+}
+
+/* ---------- Login ---------- */
+function showLogin(){
+  $('app').classList.add('hidden'); $('login').classList.remove('hidden');
+  $('inPin').value = '';
+}
+$('btnLogin').onclick = async () => {
+  const pin = $('inPin').value.trim();
+  if (!pin){ $('loginErr').textContent = 'Isi PIN dulu.'; return; }
+  store(LS.pin, pin);
+  $('loginErr').textContent = 'Mengecek…';
+  try { await startApp(); $('loginErr').textContent = ''; }
+  catch(e){ store(LS.pin, null); $('loginErr').textContent = e.message; showLogin(); }
+};
+$('btnWho').onclick = () => {
+  if (state.cart.length && !confirm('Daftar yang belum dikirim akan hilang. Keluar?')) return;
+  state.cart = []; state.sid = newSid(); store(LS.pin, null); showLogin();
+};
+
+async function startApp(){
+  const res = await api({ action: 'items' });
+  state.items = res.items; state.today = res.today;
+  $('login').classList.add('hidden'); $('app').classList.remove('hidden');
+  const d = $('inDate'); d.value = res.today; d.max = res.today;
+  const min = new Date(res.today + 'T00:00:00'); min.setDate(min.getDate() - 7);
+  d.min = min.toISOString().slice(0, 10);
+  setSearchTop(); renderList(); renderDock();
+}
+
+/* ---------- Mode IN/OUT ---------- */
+function setMode(m){
+  state.mode = m;
+  document.body.classList.toggle('out', m === 'OUT');
+  $('mIn').setAttribute('aria-pressed', m === 'IN');
+  $('mOut').setAttribute('aria-pressed', m === 'OUT');
+}
+$('mIn').onclick = () => setMode('IN');
+$('mOut').onclick = () => setMode('OUT');
+
+/* ---------- Tabs ---------- */
+$('tInput').onclick = () => switchTab(false);
+$('tHist').onclick = () => switchTab(true);
+function switchTab(hist){
+  $('tInput').setAttribute('aria-selected', !hist); $('tHist').setAttribute('aria-selected', hist);
+  $('viewInput').classList.toggle('hidden', hist); $('viewHist').classList.toggle('hidden', !hist);
+  $('dock').classList.toggle('hidden', hist);
+  if (hist) loadHistory();
+}
+function setSearchTop(){ document.querySelector('.search').style.top = document.querySelector('header').offsetHeight + 'px'; }
+window.addEventListener('resize', setSearchTop);
+
+/* ---------- List ---------- */
+function pending(name){ // efek daftar yang belum dikirim terhadap saldo
+  return state.cart.filter(l => l.item === name).reduce((a, l) => a + (l.tipe === 'IN' ? l.qty : -l.qty), 0);
+}
+function renderList(){
+  const q = $('inSearch').value.trim().toLowerCase();
+  const words = q.split(/\s+/).filter(Boolean);
+  const hits = state.items.filter(it => words.every(w => it.n.toLowerCase().includes(w)));
+  const ul = $('list');
+  if (!hits.length){ ul.innerHTML = `<li class="empty">Tidak ada item "${esc(q)}".<br>Cek ejaan, atau minta supervisor menambahkannya di Master Item Gudang.</li>`; return; }
+  ul.innerHTML = hits.map(it => {
+    const p = pending(it.n);
+    const low = it.st === 'PESAN';
+    return `<li><button class="item${low ? ' low' : ''}" data-n="${esc(it.n)}">
+      <span><span class="nm">${esc(it.n)}</span>${low ? '<span class="flag">Menipis</span>' : ''}
+        ${p ? `<span class="sub"><br><span class="inCart">Di daftar: ${p > 0 ? '+' : ''}${fmt(p)}</span></span>` : ''}</span>
+      <span class="saldo"><b>${fmt(it.saldo)}</b><small>${esc(it.u)}</small></span>
+    </button></li>`;
+  }).join('');
+}
+$('inSearch').addEventListener('input', renderList);
+$('list').addEventListener('click', e => {
+  const b = e.target.closest('.item'); if (!b) return;
+  openItem(state.items.find(it => it.n === b.dataset.n));
+});
+
+/* ---------- Item sheet ---------- */
+function openItem(it){
+  state.current = it;
+  const isIn = state.mode === 'IN';
+  $('itTipe').textContent = isIn ? 'MASUK' : 'KELUAR';
+  $('itName').textContent = it.n;
+  $('itMeta').textContent = `Saldo sekarang ${fmt(it.saldo)} ${it.u}` + (it.note && !/tentukan/i.test(it.note) ? ` · ${it.note}` : '');
+  $('itUnit').textContent = it.u;
+  $('qVal').value = '';
+  $('ketVal').value = '';
+  $('srcLabel').textContent = isIn ? 'Dari' : 'Untuk';
+  const opts = isIn ? [it.sup, ...IN_SUMBER_TAMBAHAN].filter(Boolean) : OUT_TUJUAN;
+  state.src = isIn && it.sup ? it.sup : '';
+  $('srcVal').value = '';
+  $('srcChips').innerHTML = opts.map(o => `<button type="button" aria-pressed="${o === state.src}" data-v="${esc(o)}">${esc(o)}</button>`).join('');
+  checkWarn();
+  $('itemScrim').classList.remove('hidden');
+  setTimeout(() => $('qVal').focus(), 50);
+}
+$('srcChips').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  state.src = b.getAttribute('aria-pressed') === 'true' ? '' : b.dataset.v;
+  [...$('srcChips').children].forEach(c => c.setAttribute('aria-pressed', c.dataset.v === state.src));
+  if (state.src) $('srcVal').value = '';
+});
+$('srcVal').addEventListener('input', () => {
+  if ($('srcVal').value.trim()){ state.src = ''; [...$('srcChips').children].forEach(c => c.setAttribute('aria-pressed', 'false')); }
+});
+function step(d){ const v = num($('qVal').value || 0); $('qVal').value = fmt(Math.max(0, (isNaN(v) ? 0 : v) + d)); checkWarn(); }
+$('qMinus').onclick = () => step(-1);
+$('qPlus').onclick = () => step(1);
+$('qVal').addEventListener('input', checkWarn);
+function checkWarn(){
+  const it = state.current, w = $('itWarn'), q = num($('qVal').value);
+  if (state.mode === 'OUT' && it && typeof it.saldo === 'number' && q > 0){
+    const sisa = it.saldo + pending(it.n) - q;
+    if (sisa < 0){ w.textContent = `Keluar ${fmt(q)} melebihi saldo (${fmt(it.saldo + pending(it.n))} ${it.u}). Tetap bisa dikirim, tapi cek lagi hitungan fisiknya.`; w.classList.remove('hidden'); return; }
+  }
+  w.classList.add('hidden');
+}
+$('itCancel').onclick = () => $('itemScrim').classList.add('hidden');
+$('itemScrim').addEventListener('click', e => { if (e.target.id === 'itemScrim') $('itemScrim').classList.add('hidden'); });
+$('itAdd').onclick = () => {
+  const q = num($('qVal').value);
+  if (!(q > 0)){ toast('Isi jumlahnya dulu (angka lebih dari 0).', true); $('qVal').focus(); return; }
+  const src = state.src || $('srcVal').value.trim();
+  if (state.mode === 'OUT' && !src){ toast('Pilih barang ini keluar untuk siapa.', true); return; }
+  state.cart.push({ item: state.current.n, u: state.current.u, tipe: state.mode, qty: q, sumber: src, ket: $('ketVal').value.trim() });
+  state.sid = newSid();
+  $('itemScrim').classList.add('hidden');
+  $('inSearch').value = ''; renderList(); renderDock();
+  toast(`${state.current.n} ditambahkan ke daftar`);
+};
+
+/* ---------- Dock & review ---------- */
+function renderDock(){
+  const n = state.cart.length;
+  $('cartCount').innerHTML = n ? `<b>${n} item</b> di daftar` : 'Belum ada item di daftar';
+  $('btnReview').disabled = !n;
+}
+$('btnReview').onclick = () => { $('toast').classList.add('hidden'); renderCart(); $('cartScrim').classList.remove('hidden'); };
+$('cartBack').onclick = () => $('cartScrim').classList.add('hidden');
+function renderCart(){
+  const d = $('inDate').value;
+  $('cartMeta').textContent = `Tanggal ${d.split('-').reverse().join('/')} · ${state.cart.length} baris`;
+  $('staffErr').textContent = '';
+  $('staffName').value = load(LS.name); // terisi nama terakhir di HP ini, bisa diganti
+  $('cartLines').innerHTML = state.cart.map((l, i) => `<li>
+    <div class="txt"><span class="${l.tipe === 'IN' ? 't-in' : 't-out'}">${l.tipe === 'IN' ? 'Masuk' : 'Keluar'}</span> ${esc(l.item)}
+      <small>${l.tipe === 'IN' ? 'dari' : 'untuk'} ${esc(l.sumber || '–')}${l.ket ? ' · ' + esc(l.ket) : ''}</small></div>
+    <span class="q">${fmt(l.qty)} ${esc(l.u)}</span>
+    <button class="del" data-i="${i}" aria-label="Hapus ${esc(l.item)}">Hapus</button></li>`).join('');
+  $('cartSend').disabled = !state.cart.length;
+}
+$('cartLines').addEventListener('click', e => {
+  const b = e.target.closest('.del'); if (!b) return;
+  state.cart.splice(Number(b.dataset.i), 1); state.sid = newSid();
+  renderCart(); renderDock(); renderList();
+  if (!state.cart.length) $('cartScrim').classList.add('hidden');
+});
+$('cartSend').onclick = async () => {
+  const staff = $('staffName').value.trim();
+  if (!staff){ $('staffErr').textContent = 'Isi nama kamu dulu sebelum kirim.'; $('staffName').focus(); return; }
+  $('staffErr').textContent = '';
+  store(LS.name, staff);
+  const btn = $('cartSend'); btn.disabled = true; btn.textContent = 'Mengirim…';
+  const payload = { staff, sid: state.sid, tanggal: $('inDate').value,
+    lines: state.cart.map(({ item, tipe, qty, sumber, ket }) => ({ item, tipe, qty, sumber, ket })) };
+  try {
+    const r = await api({ action: 'submit', data: JSON.stringify(payload) });
+    const n = state.cart.length;
+    state.cart = []; state.sid = newSid();
+    $('cartScrim').classList.add('hidden'); renderDock();
+    toast(r.duplicate ? 'Daftar ini sudah tersimpan sebelumnya.' : `${n} baris tersimpan di Kartu Stok Gudang.`);
+    const res = await api({ action: 'items' }); state.items = res.items; renderList();
+  } catch(e){
+    toast(e.message + ' Daftar tidak hilang, tekan kirim lagi.', true);
+    if (/PIN/i.test(e.message)) { store(LS.pin, null); showLogin(); }
+  } finally { btn.disabled = false; btn.textContent = 'Kirim ke gudang'; }
+};
+
+/* ---------- History ---------- */
+async function loadHistory(){
+  const box = $('history'); box.innerHTML = '<div class="loading">Memuat riwayat…</div>';
+  try {
+    const r = await api({ action: 'history' });
+    if (!r.rows.length){ box.innerHTML = '<div class="empty">Belum ada catatan di Kartu Stok Gudang.</div>'; return; }
+    box.innerHTML = '<ul>' + r.rows.map(x => `<li><span class="d">${esc(x.t)}</span><div class="body">
+      <span class="${x.tipe === 'IN' ? 't-in' : 't-out'}">${x.tipe === 'IN' ? 'Masuk' : 'Keluar'} ${fmt(x.qty)}</span> ${esc(x.item)}
+      <small>${esc([x.sumber, x.ket].filter(Boolean).join(' · '))}</small></div></li>`).join('') + '</ul>';
+  } catch(e){ box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+
+/* ---------- Mulai ---------- */
+window.addEventListener('beforeunload', e => { if (state.cart.length){ e.preventDefault(); e.returnValue = ''; } });
+if (API_URL.indexOf('script.google.com') === -1){
+  document.body.innerHTML = '<p style="padding:24px;font-family:sans-serif">Isi dulu <b>API_URL</b> di index.html dengan URL Web App Apps Script.</p>';
+} else if (load(LS.pin)){
+  startApp().catch(e => { showLogin(); $('loginErr').textContent = e.message; });
+} else { showLogin(); }
+</script>
+</body>
+</html>
