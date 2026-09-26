@@ -1,1 +1,1 @@
-# kartu-stok-gudang-HB
+# kartu-stok-Harian-HB
