@@ -162,6 +162,16 @@ header{position:sticky;top:0;z-index:5;background:var(--mode);color:#fff;
 .ordHint{font-size:14px;color:var(--muted);margin-top:6px;min-height:18px}
 #ordScrim .chips button[aria-pressed="true"]{background:var(--ord-soft);border-color:var(--ord);color:var(--ord)}
 .poList .note{display:block;color:var(--muted);font-size:13px;font-weight:400}
+.prodCard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.prodCard.off{opacity:.75}
+.prodBahan{font-size:14px;color:var(--muted);margin-top:4px}
+.prodCard .qty{margin:12px 0 2px}
+.prodCard .qty input{border-color:var(--in)}
+.prevBox{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.prevBox h3{margin:0 0 6px;font-size:16px}
+.prevBox li{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:15px}
+.prevBox li.short{color:var(--out);font-weight:700}
+.prevBox ul{list-style:none;margin:0;padding:0}
 .poText{white-space:pre-wrap;font-size:13px;background:var(--paper);border-radius:8px;padding:10px;margin-top:8px;color:var(--ink)}
 .loading{padding:40px;text-align:center;color:var(--muted)}
 </style>
@@ -191,6 +201,7 @@ header{position:sticky;top:0;z-index:5;background:var(--mode);color:#fff;
     </div>
     <div class="tabs" role="tablist">
       <button role="tab" id="tInput" aria-selected="true">Input</button>
+      <button role="tab" id="tProd" aria-selected="false">Produksi</button>
       <button role="tab" id="tHist" aria-selected="false">Riwayat</button>
       <button role="tab" id="tPo" aria-selected="false">PO WA</button>
     </div>
@@ -206,6 +217,8 @@ header{position:sticky;top:0;z-index:5;background:var(--mode);color:#fff;
   </div>
 
   <div id="viewHist" class="hidden"><div id="history"><div class="loading">Memuat riwayat…</div></div></div>
+
+  <div id="viewProd" class="hidden"><div id="prod" style="padding:12px 16px 40px"><div class="loading">Memuat resep…</div></div></div>
 
   <div id="viewPo" class="hidden"><div id="po"><div class="loading">Memuat PO…</div></div></div>
 
@@ -302,7 +315,7 @@ header{position:sticky;top:0;z-index:5;background:var(--mode);color:#fff;
 <script>
 /* ================== KONFIGURASI ================== */
 const API_URL = 'https://script.google.com/macros/s/AKfycbxvmc1md8u5oeZ8IqYDLkeO4KzmnOwNC_NKsvREE68uqQ6Xn1JLjpuuXBDF5wp1lZ1X/exec'; // https://script.google.com/macros/s/..../exec
-const OUT_TUJUAN = ['Bar', 'Floor', 'Kitchen', 'Bu Paula', 'Rusak/Expired', 'Retail'];
+const OUT_TUJUAN = ['Bar', 'Floor', 'Kitchen', 'Produksi Gudang', 'Bu Paula', 'Rusak/Expired', 'Retail'];
 const IN_SUMBER_TAMBAHAN = ['Produksi/Bikin Sendiri', 'Retur'];
 /* ================================================= */
 
@@ -398,7 +411,10 @@ $('mOut').onclick = () => setMode('OUT');
 $('tInput').onclick = () => switchTab('input');
 $('tHist').onclick = () => switchTab('hist');
 $('tPo').onclick = () => switchTab('po');
+$('tProd').onclick = () => switchTab('prod');
 function switchTab(tab){
+  $('tProd').setAttribute('aria-selected', tab === 'prod');
+  $('viewProd').classList.toggle('hidden', tab !== 'prod');
   $('tInput').setAttribute('aria-selected', tab === 'input');
   $('tHist').setAttribute('aria-selected', tab === 'hist');
   $('tPo').setAttribute('aria-selected', tab === 'po');
@@ -406,10 +422,11 @@ function switchTab(tab){
   $('viewHist').classList.toggle('hidden', tab !== 'hist');
   $('viewPo').classList.toggle('hidden', tab !== 'po');
   $('dock').classList.toggle('hidden', tab !== 'input');
-  document.querySelector('.switch').classList.toggle('hidden', tab === 'po'); // masuk/keluar tidak relevan di PO
+  document.querySelector('.switch').classList.toggle('hidden', tab === 'po' || tab === 'prod'); // masuk/keluar tidak relevan di PO & produksi
   setSearchTop();
   if (tab === 'hist') loadHistory();
   if (tab === 'po') loadPo();
+  if (tab === 'prod') loadProd();
 }
 function setSearchTop(){ document.querySelector('.search').style.top = document.querySelector('header').offsetHeight + 'px'; }
 window.addEventListener('resize', setSearchTop);
@@ -722,6 +739,100 @@ $('ordSave').onclick = async () => {
   } catch(e){ err.textContent = e.message; }
   finally { btn.disabled = false; btn.textContent = 'Simpan pesanan'; }
 };
+
+/* ---------- Produksi (resep) ---------- */
+function saldoOf(n){ const it = findItem(n); return it && typeof it.saldo === 'number' ? it.saldo : 0; }
+async function loadProd(){
+  const box = $('prod');
+  if (!state.prod) box.innerHTML = '<div class="loading">Memuat resep…</div>';
+  try {
+    const r = await api({ action: 'resep' });
+    state.prod = { list: r.products, qty: {}, sid: newSid() };
+    renderProd();
+  } catch(e){ box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+function renderProd(){
+  const P = state.prod, box = $('prod');
+  if (!P.list.length){ box.innerHTML = '<div class="empty">Belum ada resep. Isi sheet "Resep Gudang" dulu.</div>'; return; }
+  box.innerHTML = `<div class="bar" style="margin:0 -16px 12px"><label for="prodDate">Tanggal</label><input type="date" id="prodDate"></div>
+    <p class="poHint">Isi jumlah hasil produksi. Bahan yang terpakai dicatat keluar otomatis sesuai resep.</p>` +
+    P.list.map((p, i) => `<div class="prodCard${p.ready ? '' : ' off'}">
+      <div class="poHead"><h3>${esc(p.n)}</h3><small>saldo ${fmt(saldoOf(p.n))} ${esc(p.u)}</small></div>
+      <div class="prodBahan">Per 1 ${esc(p.u || 'satuan')}: ${p.bahan.map(b => `${esc(b.n)} ${b.q === null ? '?' : fmt(b.q)} ${esc(b.u)}`).join(' · ')}</div>
+      ${p.ready ? `<div class="qty">
+          <button data-step="-1" data-p="${i}" aria-label="Kurangi">−</button>
+          <input data-p="${i}" inputmode="decimal" autocomplete="off" placeholder="0" aria-label="Hasil ${esc(p.n)}" value="${esc(P.qty[i] ?? '')}">
+          <button data-step="1" data-p="${i}" aria-label="Tambah">+</button></div>
+          <div class="unit">${esc(p.u)}</div>`
+        : `<div class="warn">Resep belum lengkap: ${esc(p.missing.join('; '))}. Minta supervisor melengkapi sheet "Resep Gudang".</div>`}
+    </div>`).join('') +
+    `<div class="prevBox" id="prodPrev"></div>
+     <div class="field"><label for="prodNote">Catatan (opsional)</label><input id="prodNote" placeholder="mis. batch pagi"></div>
+     <div class="field"><label for="prodName">Nama kamu</label><input id="prodName" autocomplete="off" placeholder="mis. Putu" value="${esc(load(LS.name))}"></div>
+     <div id="prodErr" role="alert" style="color:var(--out);font-size:14px;margin-top:8px;min-height:18px"></div>
+     <button class="btn primary" id="prodSend" style="width:100%;margin-top:8px">Catat produksi</button>`;
+  const d = $('prodDate'); d.value = state.today; d.max = state.today;
+  const min = new Date(state.today + 'T00:00:00'); min.setDate(min.getDate() - 7); d.min = min.toISOString().slice(0, 10);
+  renderProdPreview();
+}
+function prodNeeds(){
+  const P = state.prod, need = {};
+  P.list.forEach((p, i) => {
+    const q = num(P.qty[i] ?? '');
+    if (!p.ready || !(q > 0)) return;
+    p.bahan.forEach(b => {
+      const k = b.n.toLowerCase();
+      need[k] = need[k] || { n: b.n, u: b.u, q: 0 };
+      need[k].q = Math.round((need[k].q + q * b.q) * 1000) / 1000;
+    });
+  });
+  return Object.values(need);
+}
+function renderProdPreview(){
+  const box = $('prodPrev'); if (!box) return;
+  const need = prodNeeds();
+  if (!need.length){ box.innerHTML = '<h3>Bahan terpakai</h3><div class="prodBahan">Isi jumlah hasil produksi untuk melihat bahan yang akan dicatat keluar.</div>'; $('prodSend').disabled = true; return; }
+  const short = need.filter(b => b.q > saldoOf(b.n));
+  box.innerHTML = '<h3>Bahan terpakai</h3><ul>' + need.map(b => {
+    const s = saldoOf(b.n), kurang = b.q > s;
+    return `<li class="${kurang ? 'short' : ''}"><span>${esc(b.n)}</span><span>${fmt(b.q)} ${esc(b.u)}${kurang ? ` (saldo ${fmt(s)})` : ''}</span></li>`;
+  }).join('') + '</ul>' +
+  (short.length ? `<div class="warn">Saldo ${short.map(b => esc(b.n)).join(', ')} di sistem tidak cukup. Yang tercatat keluar hanya sebesar saldo (stok tidak bisa minus). Kemungkinan ada barang masuk yang belum dicatat, cek dulu.</div>` : '');
+  $('prodSend').disabled = false;
+}
+$('prod').addEventListener('click', async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.step !== undefined){
+    const i = b.dataset.p, P = state.prod;
+    const v = num(P.qty[i] ?? '');
+    P.qty[i] = String(Math.max(0, (isNaN(v) ? 0 : v) + Number(b.dataset.step)));
+    if (P.qty[i] === '0') P.qty[i] = '';
+    document.querySelector(`#prod input[data-p="${i}"]`).value = P.qty[i];
+    P.sid = newSid(); renderProdPreview();
+  } else if (b.id === 'prodSend'){
+    const P = state.prod, err = $('prodErr');
+    const staff = $('prodName').value.trim();
+    const items = P.list.map((p, i) => ({ p, q: num(P.qty[i] ?? '') })).filter(x => x.p.ready && x.q > 0)
+      .map(x => ({ n: x.p.n, qty: x.q }));
+    if (!items.length){ err.textContent = 'Isi jumlah hasil produksi dulu.'; return; }
+    if (!staff){ err.textContent = 'Isi nama kamu dulu.'; $('prodName').focus(); return; }
+    err.textContent = ''; store(LS.name, staff);
+    b.disabled = true; b.textContent = 'Menyimpan…';
+    try {
+      const r = await api({ action: 'produksi', data: JSON.stringify({ staff, sid: P.sid, tanggal: $('prodDate').value, note: $('prodNote').value.trim(), items }) });
+      let msg = r.duplicate ? 'Produksi ini sudah tersimpan sebelumnya.' : `Produksi tersimpan: ${items.map(x => `${x.n} ${fmt(x.qty)}`).join(', ')}.`;
+      if (r.adjusted && r.adjusted.length) msg += ' Bahan kurang: ' + r.adjusted.map(a => `${a.item} (butuh ${fmt(a.diminta)}, tercatat ${fmt(a.keluar)})`).join(', ') + '.';
+      toast(msg, !!(r.adjusted && r.adjusted.length));
+      const res = await api({ action: 'items' }); state.items = res.items; renderList();
+      P.qty = {}; P.sid = newSid(); renderProd();
+    } catch(e2){ err.textContent = e2.message + ' Data tidak hilang, tekan lagi.'; }
+    finally { const btn = $('prodSend'); if (btn){ btn.disabled = false; btn.textContent = 'Catat produksi'; } }
+  }
+});
+$('prod').addEventListener('input', e => {
+  const i = e.target.dataset.p; if (i === undefined) return;
+  state.prod.qty[i] = e.target.value; state.prod.sid = newSid(); renderProdPreview();
+});
 
 /* ---------- Mulai ---------- */
 window.addEventListener('beforeunload', e => { if (state.cart.length){ e.preventDefault(); e.returnValue = ''; } });
