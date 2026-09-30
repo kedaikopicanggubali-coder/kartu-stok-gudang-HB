@@ -184,7 +184,7 @@ header{position:sticky;top:0;z-index:5;background:var(--mode);color:#fff;
     <div class="tabs" role="tablist">
       <button role="tab" id="tInput" aria-selected="true">Input</button>
       <button role="tab" id="tHist" aria-selected="false">Riwayat</button>
-      <button role="tab" id="tPo" aria-selected="false" class="hidden">PO WA</button>
+      <button role="tab" id="tPo" aria-selected="false">PO WA</button>
     </div>
   </header>
 
@@ -266,7 +266,7 @@ const IN_SUMBER_TAMBAHAN = ['Produksi/Bikin Sendiri', 'Retur'];
 
 const $ = id => document.getElementById(id);
 const LS = { name: 'hbg_name', pin: 'hbg_pin' };
-const state = { items: [], mode: 'IN', cart: [], sid: newSid(), current: null, src: '', today: '', role: 'staff', po: null };
+const state = { items: [], mode: 'IN', cart: [], sid: newSid(), current: null, src: '', today: '', po: null };
 
 function newSid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
 function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -329,13 +329,12 @@ $('btnLogin').onclick = async () => {
 };
 $('btnWho').onclick = () => {
   if (state.cart.length && !confirm('Daftar yang belum dikirim akan hilang. Keluar?')) return;
-  state.cart = []; state.sid = newSid(); state.po = null; state.role = 'staff'; $('tPo').classList.add('hidden'); switchTab('input'); store(LS.pin, null); showLogin();
+  state.cart = []; state.sid = newSid(); state.po = null; switchTab('input'); store(LS.pin, null); showLogin();
 };
 
 async function startApp(){
   const res = await api({ action: 'items' });
-  state.items = res.items; state.today = res.today; state.role = res.role || 'staff';
-  $('tPo').classList.toggle('hidden', state.role !== 'boss');
+  state.items = res.items; state.today = res.today;
   $('login').classList.add('hidden'); $('app').classList.remove('hidden');
   const d = $('inDate'); d.value = res.today; d.max = res.today;
   const min = new Date(res.today + 'T00:00:00'); min.setDate(min.getDate() - 7);
@@ -537,7 +536,7 @@ function renderPo(){
   const r = state.po, box = $('po');
   if (!r.blocks.length){ box.innerHTML = '<div class="empty">Belum ada PO. Jalankan Generate PO di sheet dulu.</div>'; return; }
   const key = s => String(s || '').trim().toLowerCase();
-  box.innerHTML = '<p class="poHint">Centang item yang sudah kamu pesan. Staf gudang akan melihat label "Dipesan" sampai barangnya dicatat masuk.</p>' +
+  box.innerHTML = '<p class="poHint">Salin teks untuk dikirim ke supplier, lalu centang item yang sudah dipesan. Label "Dipesan" muncul di daftar item sampai barangnya dicatat masuk.</p>' +
     r.blocks.map((b, bi) => {
       const done = b.items.filter(it => r.orders[key(it.n)]).length;
       return `<div class="poCard">
@@ -566,8 +565,18 @@ async function copyText(t){
     ta.remove(); return ok;
   }
 }
+function askName(){
+  let n = load(LS.name);
+  if (!n){
+    n = (prompt('Nama kamu (dicatat sebagai yang memesan):') || '').trim();
+    if (n) store(LS.name, n);
+  }
+  return n;
+}
 async function setOrder(items, on){
-  const r = await api({ action: 'order', data: JSON.stringify({ on, by: load(LS.name) || 'Boss', items }) });
+  const by = askName();
+  if (!by) throw new Error('Isi nama dulu supaya tercatat siapa yang memesan.');
+  const r = await api({ action: 'order', data: JSON.stringify({ on, by, items }) });
   state.po.orders = r.orders; renderPo();
   // label "Dipesan" di daftar item ikut diperbarui
   const key = s => String(s || '').trim().toLowerCase();
