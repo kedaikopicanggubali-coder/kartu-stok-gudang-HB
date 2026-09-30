@@ -130,6 +130,31 @@ header{position:sticky;top:0;z-index:5;background:var(--mode);color:#fff;
 #toast{position:fixed;left:16px;right:16px;bottom:calc(92px + env(safe-area-inset-bottom));z-index:20;
   background:var(--navy);color:#fff;border-radius:10px;padding:14px 16px;font-size:16px;text-align:center}
 #toast.err{background:var(--out)}
+
+/* ---------- v1.2: order & PO WA ---------- */
+:root{ --ord:#3D5AFE; --ord-soft:#EAF0FF; }
+.ordTag{display:inline-block;font-size:12px;font-weight:700;color:var(--ord);background:var(--ord-soft);
+  padding:1px 7px;border-radius:5px;margin-left:6px;vertical-align:1px}
+.ordInfo{background:var(--ord-soft);color:#1F2E8A;border-radius:8px;padding:10px 12px;font-size:15px;margin-top:10px}
+#po{padding:12px 16px 40px}
+.poHint{color:var(--muted);font-size:14px;margin:0 2px 12px}
+.poCard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.poHead{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.poHead h3{margin:0;font-size:18px}
+.poHead small{color:var(--muted);font-size:13px;white-space:nowrap}
+.poBtns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 6px}
+.poBtns .btn{padding:11px 10px;font-size:15px}
+.btn.wa{background:#1E7B4F;color:#fff}
+.poList{list-style:none;margin:6px 0 0;padding:0}
+.poList li{border-top:1px solid var(--line)}
+.poList label{display:flex;align-items:center;gap:12px;padding:11px 2px;cursor:pointer}
+.poList input{width:22px;height:22px;accent-color:var(--ord);flex:none}
+.poList .pn{flex:1;min-width:0}
+.poList .pn small{display:block;color:var(--ord);font-size:13px;font-weight:700}
+.poList .pq{font-weight:700;white-space:nowrap}
+.poList li.on .pn b{color:var(--muted);text-decoration:line-through}
+.poAll{border:0;background:none;color:var(--ord);font-weight:700;font-size:14px;padding:8px 0}
+.poText{white-space:pre-wrap;font-size:13px;background:var(--paper);border-radius:8px;padding:10px;margin-top:8px;color:var(--ink)}
 .loading{padding:40px;text-align:center;color:var(--muted)}
 </style>
 </head>
@@ -159,6 +184,7 @@ header{position:sticky;top:0;z-index:5;background:var(--mode);color:#fff;
     <div class="tabs" role="tablist">
       <button role="tab" id="tInput" aria-selected="true">Input</button>
       <button role="tab" id="tHist" aria-selected="false">Riwayat</button>
+      <button role="tab" id="tPo" aria-selected="false" class="hidden">PO WA</button>
     </div>
   </header>
 
@@ -172,6 +198,8 @@ header{position:sticky;top:0;z-index:5;background:var(--mode);color:#fff;
   </div>
 
   <div id="viewHist" class="hidden"><div id="history"><div class="loading">Memuat riwayat…</div></div></div>
+
+  <div id="viewPo" class="hidden"><div id="po"><div class="loading">Memuat PO…</div></div></div>
 
   <div class="dock" id="dock">
     <div class="count" id="cartCount">Belum ada item di daftar</div>
@@ -191,6 +219,7 @@ header{position:sticky;top:0;z-index:5;background:var(--mode);color:#fff;
       <button id="qPlus" aria-label="Tambah">+</button>
     </div>
     <div class="unit" id="itUnit"></div>
+    <div class="ordInfo hidden" id="itOrd"></div>
     <div class="warn hidden" id="itWarn"></div>
     <div class="field">
       <label id="srcLabel">Dari</label>
@@ -237,7 +266,7 @@ const IN_SUMBER_TAMBAHAN = ['Produksi/Bikin Sendiri', 'Retur'];
 
 const $ = id => document.getElementById(id);
 const LS = { name: 'hbg_name', pin: 'hbg_pin' };
-const state = { items: [], mode: 'IN', cart: [], sid: newSid(), current: null, src: '', today: '' };
+const state = { items: [], mode: 'IN', cart: [], sid: newSid(), current: null, src: '', today: '', role: 'staff', po: null };
 
 function newSid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
 function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -300,12 +329,13 @@ $('btnLogin').onclick = async () => {
 };
 $('btnWho').onclick = () => {
   if (state.cart.length && !confirm('Daftar yang belum dikirim akan hilang. Keluar?')) return;
-  state.cart = []; state.sid = newSid(); store(LS.pin, null); showLogin();
+  state.cart = []; state.sid = newSid(); state.po = null; state.role = 'staff'; $('tPo').classList.add('hidden'); switchTab('input'); store(LS.pin, null); showLogin();
 };
 
 async function startApp(){
   const res = await api({ action: 'items' });
-  state.items = res.items; state.today = res.today;
+  state.items = res.items; state.today = res.today; state.role = res.role || 'staff';
+  $('tPo').classList.toggle('hidden', state.role !== 'boss');
   $('login').classList.add('hidden'); $('app').classList.remove('hidden');
   const d = $('inDate'); d.value = res.today; d.max = res.today;
   const min = new Date(res.today + 'T00:00:00'); min.setDate(min.getDate() - 7);
@@ -324,13 +354,21 @@ $('mIn').onclick = () => setMode('IN');
 $('mOut').onclick = () => setMode('OUT');
 
 /* ---------- Tabs ---------- */
-$('tInput').onclick = () => switchTab(false);
-$('tHist').onclick = () => switchTab(true);
-function switchTab(hist){
-  $('tInput').setAttribute('aria-selected', !hist); $('tHist').setAttribute('aria-selected', hist);
-  $('viewInput').classList.toggle('hidden', hist); $('viewHist').classList.toggle('hidden', !hist);
-  $('dock').classList.toggle('hidden', hist);
-  if (hist) loadHistory();
+$('tInput').onclick = () => switchTab('input');
+$('tHist').onclick = () => switchTab('hist');
+$('tPo').onclick = () => switchTab('po');
+function switchTab(tab){
+  $('tInput').setAttribute('aria-selected', tab === 'input');
+  $('tHist').setAttribute('aria-selected', tab === 'hist');
+  $('tPo').setAttribute('aria-selected', tab === 'po');
+  $('viewInput').classList.toggle('hidden', tab !== 'input');
+  $('viewHist').classList.toggle('hidden', tab !== 'hist');
+  $('viewPo').classList.toggle('hidden', tab !== 'po');
+  $('dock').classList.toggle('hidden', tab !== 'input');
+  document.querySelector('.switch').classList.toggle('hidden', tab === 'po'); // masuk/keluar tidak relevan di PO
+  setSearchTop();
+  if (tab === 'hist') loadHistory();
+  if (tab === 'po') loadPo();
 }
 function setSearchTop(){ document.querySelector('.search').style.top = document.querySelector('header').offsetHeight + 'px'; }
 window.addEventListener('resize', setSearchTop);
@@ -349,7 +387,7 @@ function renderList(){
     const p = pending(it.n);
     const low = it.st === 'PESAN';
     return `<li><button class="item${low ? ' low' : ''}" data-n="${esc(it.n)}">
-      <span><span class="nm">${esc(it.n)}</span>${low ? '<span class="flag">Menipis</span>' : ''}
+      <span><span class="nm">${esc(it.n)}</span>${low ? '<span class="flag">Menipis</span>' : ''}${it.ord ? `<span class="ordTag">Dipesan ${esc(it.ord.tgl)}</span>` : ''}
         ${p ? `<span class="sub"><br><span class="inCart">Di daftar: ${p > 0 ? '+' : ''}${fmt(p)}</span></span>` : ''}</span>
       <span class="saldo"><b>${fmt(it.saldo)}</b><small>${esc(it.u)}</small></span>
     </button></li>`;
@@ -369,6 +407,9 @@ function openItem(it){
   $('itName').textContent = it.n;
   $('itMeta').textContent = `Saldo sekarang ${fmt(it.saldo)} ${it.u}` + (it.note && !/tentukan/i.test(it.note) ? ` · ${it.note}` : '');
   $('itUnit').textContent = it.u;
+  const oi = $('itOrd');
+  if (it.ord){ oi.textContent = `Sudah dipesan ${it.ord.tgl}` + (it.ord.qty ? ` · ${fmt(it.ord.qty)} ${it.ord.u || it.u}` : '') + (it.ord.sup ? ` · ${it.ord.sup}` : '') + '. Belum diterima.'; oi.classList.remove('hidden'); }
+  else oi.classList.add('hidden');
   $('qVal').value = '';
   $('ketVal').value = '';
   $('srcLabel').textContent = isIn ? 'Dari' : 'Untuk';
@@ -397,7 +438,13 @@ function checkWarn(){
   const it = state.current, w = $('itWarn'), q = num($('qVal').value);
   if (state.mode === 'OUT' && it && typeof it.saldo === 'number' && q > 0){
     const sisa = it.saldo + pending(it.n) - q;
-    if (sisa < 0){ w.textContent = `Keluar ${fmt(q)} melebihi saldo (${fmt(it.saldo + pending(it.n))} ${it.u}). Tetap bisa dikirim, tapi cek lagi hitungan fisiknya.`; w.classList.remove('hidden'); return; }
+    if (sisa < 0){
+      const ada = Math.max(0, it.saldo + pending(it.n));
+      w.textContent = ada > 0
+        ? `Saldo cuma ${fmt(ada)} ${it.u}. Yang tercatat keluar hanya ${fmt(ada)} (stok tidak bisa minus). Kekurangannya dicatat di keterangan.`
+        : `Stok habis (0 ${it.u}). Tercatat keluar 0, permintaannya tetap dicatat di keterangan.`;
+      w.classList.remove('hidden'); return;
+    }
   }
   w.classList.add('hidden');
 }
@@ -454,7 +501,10 @@ $('cartSend').onclick = async () => {
     const n = state.cart.length;
     state.cart = []; state.sid = newSid();
     $('cartScrim').classList.add('hidden'); renderDock();
-    toast(r.duplicate ? 'Daftar ini sudah tersimpan sebelumnya.' : `${n} baris tersimpan di Kartu Stok Gudang.`);
+    let msg = r.duplicate ? 'Daftar ini sudah tersimpan sebelumnya.' : `${n} baris tersimpan di Kartu Stok Gudang.`;
+    if (r.adjusted && r.adjusted.length) msg += ' Stok tidak cukup: ' + r.adjusted.map(a => `${a.item} (diminta ${fmt(a.diminta)}, keluar ${fmt(a.keluar)})`).join(', ') + '.';
+    if (r.received && r.received.length) msg += ' Order diterima: ' + r.received.join(', ') + '.';
+    toast(msg, !!(r.adjusted && r.adjusted.length));
     const res = await api({ action: 'items' }); state.items = res.items; renderList();
   } catch(e){
     toast(e.message + ' Daftar tidak hilang, tekan kirim lagi.', true);
@@ -473,6 +523,80 @@ async function loadHistory(){
       <small>${esc([x.sumber, x.ket].filter(Boolean).join(' · '))}</small></div></li>`).join('') + '</ul>';
   } catch(e){ box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
 }
+
+/* ---------- PO WA + checklist (khusus boss) ---------- */
+async function loadPo(){
+  const box = $('po');
+  if (!state.po) box.innerHTML = '<div class="loading">Memuat PO…</div>';
+  try {
+    const r = await api({ action: 'po' });
+    state.po = r; renderPo();
+  } catch(e){ box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+function renderPo(){
+  const r = state.po, box = $('po');
+  if (!r.blocks.length){ box.innerHTML = '<div class="empty">Belum ada PO. Jalankan Generate PO di sheet dulu.</div>'; return; }
+  const key = s => String(s || '').trim().toLowerCase();
+  box.innerHTML = '<p class="poHint">Centang item yang sudah kamu pesan. Staf gudang akan melihat label "Dipesan" sampai barangnya dicatat masuk.</p>' +
+    r.blocks.map((b, bi) => {
+      const done = b.items.filter(it => r.orders[key(it.n)]).length;
+      return `<div class="poCard">
+        <div class="poHead"><h3>${esc(b.sup)}</h3><small>${esc(b.date)} · ${done}/${b.items.length} dipesan</small></div>
+        <div class="poBtns">
+          <button class="btn ghost" data-copy="${bi}">Salin teks</button>
+          <button class="btn wa" data-wa="${bi}">Buka WhatsApp</button>
+        </div>
+        <ul class="poList">${b.items.map((it, ii) => {
+          const o = r.orders[key(it.n)];
+          return `<li class="${o ? 'on' : ''}"><label>
+            <input type="checkbox" data-b="${bi}" data-i="${ii}" ${o ? 'checked' : ''}>
+            <span class="pn"><b>${esc(it.label || it.n)}</b>${it.label && it.label !== it.n ? `<small style="color:var(--muted);font-weight:400">${esc(it.n)}</small>` : ''}${o ? `<small>Dipesan ${esc(o.tgl)}${o.by ? ' · ' + esc(o.by) : ''}</small>` : ''}</span>
+            <span class="pq">${esc(it.qtyTxt)}</span></label></li>`;
+        }).join('')}</ul>
+        ${done < b.items.length ? `<button class="poAll" data-all="${bi}">Centang semua (${b.items.length - done})</button>` : ''}
+      </div>`;
+    }).join('');
+}
+async function copyText(t){
+  try { await navigator.clipboard.writeText(t); return true; }
+  catch(e){
+    const ta = document.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = document.execCommand('copy'); } catch(_){}
+    ta.remove(); return ok;
+  }
+}
+async function setOrder(items, on){
+  const r = await api({ action: 'order', data: JSON.stringify({ on, by: load(LS.name) || 'Boss', items }) });
+  state.po.orders = r.orders; renderPo();
+  // label "Dipesan" di daftar item ikut diperbarui
+  const key = s => String(s || '').trim().toLowerCase();
+  state.items.forEach(it => { it.ord = r.orders[key(it.n)] || null; }); renderList();
+}
+$('po').addEventListener('click', async e => {
+  const t = e.target;
+  if (t.dataset.copy !== undefined){
+    const ok = await copyText(state.po.blocks[+t.dataset.copy].text);
+    toast(ok ? 'Teks PO disalin. Tempel di chat WA supplier.' : 'Gagal menyalin. Tekan lama teksnya lalu salin manual.', !ok);
+  } else if (t.dataset.wa !== undefined){
+    window.open('https://wa.me/?text=' + encodeURIComponent(state.po.blocks[+t.dataset.wa].text), '_blank');
+  } else if (t.dataset.all !== undefined){
+    const b = state.po.blocks[+t.dataset.all];
+    const key = s => String(s || '').trim().toLowerCase();
+    const todo = b.items.filter(it => !state.po.orders[key(it.n)]);
+    t.disabled = true; t.textContent = 'Menyimpan…';
+    try { await setOrder(todo.map(it => ({ n: it.n, qty: it.qty, u: it.u, sup: b.sup })), true); toast(`${todo.length} item ditandai sudah dipesan.`); }
+    catch(err){ toast(err.message, true); renderPo(); }
+  }
+});
+$('po').addEventListener('change', async e => {
+  const cb = e.target; if (cb.type !== 'checkbox') return;
+  const b = state.po.blocks[+cb.dataset.b], it = b.items[+cb.dataset.i];
+  if (!cb.checked && !confirm(`Batalkan tanda "sudah dipesan" untuk ${it.label || it.n}?`)){ cb.checked = true; return; }
+  cb.disabled = true;
+  try { await setOrder([{ n: it.n, qty: it.qty, u: it.u, sup: b.sup }], cb.checked); toast(cb.checked ? `${it.label || it.n} ditandai sudah dipesan.` : `Tanda pesan ${it.label || it.n} dibatalkan.`); }
+  catch(err){ toast(err.message, true); cb.checked = !cb.checked; cb.disabled = false; }
+});
 
 /* ---------- Mulai ---------- */
 window.addEventListener('beforeunload', e => { if (state.cart.length){ e.preventDefault(); e.returnValue = ''; } });
