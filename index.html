@@ -154,6 +154,14 @@ header{position:sticky;top:0;z-index:5;background:var(--mode);color:#fff;
 .poList .pq{font-weight:700;white-space:nowrap}
 .poList li.on .pn b{color:var(--muted);text-decoration:line-through}
 .poAll{border:0;background:none;color:var(--ord);font-weight:700;font-size:14px;padding:8px 0}
+.ordLink{display:block;width:100%;margin-top:12px;border:1px dashed var(--ord);background:var(--ord-soft);color:var(--ord);
+  border-radius:10px;padding:11px 12px;font-weight:700;font-size:15px;text-align:left}
+.btn.ordNew{width:100%;background:var(--ord);color:#fff;margin-bottom:12px}
+.btn.ordGo{background:var(--ord);color:#fff}
+.ordRow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ordHint{font-size:14px;color:var(--muted);margin-top:6px;min-height:18px}
+#ordScrim .chips button[aria-pressed="true"]{background:var(--ord-soft);border-color:var(--ord);color:var(--ord)}
+.poList .note{display:block;color:var(--muted);font-size:13px;font-weight:400}
 .poText{white-space:pre-wrap;font-size:13px;background:var(--paper);border-radius:8px;padding:10px;margin-top:8px;color:var(--ink)}
 .loading{padding:40px;text-align:center;color:var(--muted)}
 </style>
@@ -220,6 +228,7 @@ header{position:sticky;top:0;z-index:5;background:var(--mode);color:#fff;
     </div>
     <div class="unit" id="itUnit"></div>
     <div class="ordInfo hidden" id="itOrd"></div>
+    <button class="ordLink" id="itOrder" type="button">Sudah dipesan di luar PO? Catat di sini →</button>
     <div class="warn hidden" id="itWarn"></div>
     <div class="field">
       <label id="srcLabel">Dari</label>
@@ -251,6 +260,39 @@ header{position:sticky;top:0;z-index:5;background:var(--mode);color:#fff;
     <div class="actions">
       <button class="btn ghost" id="cartBack">Kembali</button>
       <button class="btn primary" id="cartSend">Kirim ke gudang</button>
+    </div>
+  </div>
+</div>
+
+<!-- Order di luar PO -->
+<div class="scrim hidden" id="ordScrim">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="ordTitle">
+    <span class="tipe" style="background:var(--ord)">PESAN</span>
+    <h2 id="ordTitle">Catat pesanan di luar PO</h2>
+    <div class="meta">Untuk barang yang dibeli di luar PO WA, misalnya karena ada voucher atau promo.</div>
+    <div class="field">
+      <label for="ordItem">Item</label>
+      <input id="ordItem" list="itemsDL" autocomplete="off" placeholder="Ketik nama item…">
+      <datalist id="itemsDL"></datalist>
+      <div class="ordHint" id="ordItemHint"></div>
+    </div>
+    <div class="field ordRow">
+      <div><label for="ordQty">Jumlah dipesan</label><input id="ordQty" inputmode="decimal" autocomplete="off" placeholder="0"></div>
+      <div><label for="ordDate">Tanggal pesan</label><input type="date" id="ordDate"></div>
+    </div>
+    <div class="field">
+      <label>Beli di</label>
+      <div class="chips" id="ordChips"></div>
+      <input id="ordSup" placeholder="Tulis kalau tidak ada di pilihan">
+    </div>
+    <div class="field">
+      <label for="ordNote">Catatan (opsional)</label>
+      <input id="ordNote" placeholder="mis. voucher 10.10, estimasi tiba 3 hari">
+    </div>
+    <div id="ordErr" role="alert" style="color:var(--out);font-size:14px;margin-top:10px;min-height:18px"></div>
+    <div class="actions">
+      <button class="btn ghost" id="ordCancel">Batal</button>
+      <button class="btn ordGo" id="ordSave">Simpan pesanan</button>
     </div>
   </div>
 </div>
@@ -534,9 +576,18 @@ async function loadPo(){
 }
 function renderPo(){
   const r = state.po, box = $('po');
-  if (!r.blocks.length){ box.innerHTML = '<div class="empty">Belum ada PO. Jalankan Generate PO di sheet dulu.</div>'; return; }
   const key = s => String(s || '').trim().toLowerCase();
-  box.innerHTML = '<p class="poHint">Salin teks untuk dikirim ke supplier, lalu centang item yang sudah dipesan. Label "Dipesan" muncul di daftar item sampai barangnya dicatat masuk.</p>' +
+  // pesanan terbuka yang itemnya tidak ada di PO WA saat ini = order di luar PO
+  const inPo = new Set(r.blocks.flatMap(b => b.items.map(it => key(it.n))));
+  const extras = Object.entries(r.orders).filter(([k]) => !inPo.has(k));
+  const extraHtml = `<button class="btn ordNew" id="poExtraBtn">+ Catat pesanan di luar PO</button>` +
+    (extras.length ? `<div class="poCard"><div class="poHead"><h3>Pesanan di luar PO</h3><small>${extras.length} item</small></div>
+      <ul class="poList">${extras.map(([k, o]) => `<li><label>
+        <input type="checkbox" data-x="${esc(k)}" checked>
+        <span class="pn"><b>${esc(o.n || k)}</b><small>Dipesan ${esc(o.tgl)}${o.sup ? ' · ' + esc(o.sup) : ''}${o.by ? ' · ' + esc(o.by) : ''}</small>${o.note ? `<span class="note">${esc(o.note)}</span>` : ''}</span>
+        <span class="pq">${fmt(o.qty)} ${esc(o.u)}</span></label></li>`).join('')}</ul></div>` : '');
+  if (!r.blocks.length){ box.innerHTML = extraHtml + '<div class="empty">Belum ada PO. Jalankan Generate PO di sheet dulu.</div>'; return; }
+  box.innerHTML = extraHtml + '<p class="poHint">Salin teks untuk dikirim ke supplier, lalu centang item yang sudah dipesan. Label "Dipesan" muncul di daftar item sampai barangnya dicatat masuk.</p>' +
     r.blocks.map((b, bi) => {
       const done = b.items.filter(it => r.orders[key(it.n)]).length;
       return `<div class="poCard">
@@ -584,6 +635,7 @@ async function setOrder(items, on){
 }
 $('po').addEventListener('click', async e => {
   const t = e.target;
+  if (t.id === 'poExtraBtn'){ openOrder(''); return; }
   if (t.dataset.copy !== undefined){
     const ok = await copyText(state.po.blocks[+t.dataset.copy].text);
     toast(ok ? 'Teks PO disalin. Tempel di chat WA supplier.' : 'Gagal menyalin. Tekan lama teksnya lalu salin manual.', !ok);
@@ -600,12 +652,76 @@ $('po').addEventListener('click', async e => {
 });
 $('po').addEventListener('change', async e => {
   const cb = e.target; if (cb.type !== 'checkbox') return;
+  if (cb.dataset.x !== undefined){
+    const o = state.po.orders[cb.dataset.x];
+    if (!confirm(`Batalkan pesanan ${o.n || cb.dataset.x}?`)){ cb.checked = true; return; }
+    cb.disabled = true;
+    try { await setOrder([{ n: o.n || cb.dataset.x }], false); toast('Pesanan dibatalkan.'); }
+    catch(err){ toast(err.message, true); cb.checked = true; cb.disabled = false; }
+    return;
+  }
   const b = state.po.blocks[+cb.dataset.b], it = b.items[+cb.dataset.i];
   if (!cb.checked && !confirm(`Batalkan tanda "sudah dipesan" untuk ${it.label || it.n}?`)){ cb.checked = true; return; }
   cb.disabled = true;
   try { await setOrder([{ n: it.n, qty: it.qty, u: it.u, sup: b.sup }], cb.checked); toast(cb.checked ? `${it.label || it.n} ditandai sudah dipesan.` : `Tanda pesan ${it.label || it.n} dibatalkan.`); }
   catch(err){ toast(err.message, true); cb.checked = !cb.checked; cb.disabled = false; }
 });
+
+/* ---------- Order di luar PO ---------- */
+const ORDER_TOKO = ['Shopee', 'Tokopedia', 'Toko offline'];
+function findItem(n){ const k = String(n || '').trim().toLowerCase(); return state.items.find(it => it.n.toLowerCase() === k); }
+function openOrder(itName){
+  $('itemsDL').innerHTML = state.items.map(it => `<option value="${esc(it.n)}">`).join('');
+  $('ordItem').value = itName || ''; $('ordQty').value = ''; $('ordNote').value = ''; $('ordSup').value = '';
+  $('ordErr').textContent = ''; state.ordSrc = '';
+  const d = $('ordDate'); d.value = state.today; d.max = state.today;
+  const min = new Date(state.today + 'T00:00:00'); min.setDate(min.getDate() - 7); d.min = min.toISOString().slice(0, 10);
+  renderOrdItem();
+  $('ordScrim').classList.remove('hidden');
+  setTimeout(() => (itName ? $('ordQty') : $('ordItem')).focus(), 60);
+}
+function renderOrdItem(){
+  const raw = $('ordItem').value.trim(), it = findItem(raw);
+  $('ordItemHint').textContent = it
+    ? `Saldo ${fmt(it.saldo)} ${it.u}` + (it.ord ? ` · sudah ada pesanan ${it.ord.tgl} (${fmt(it.ord.qty)} ${it.ord.u || it.u})` : '')
+    : (raw ? 'Pilih nama dari daftar yang muncul saat mengetik.' : '');
+  const opts = [...new Set([it && it.sup, ...ORDER_TOKO].filter(o => o && o.toLowerCase() !== 'gudang'))];
+  if (!opts.includes(state.ordSrc)) state.ordSrc = '';
+  $('ordChips').innerHTML = opts.map(o => `<button type="button" aria-pressed="${o === state.ordSrc}" data-v="${esc(o)}">${esc(o)}</button>`).join('');
+}
+$('ordItem').addEventListener('input', renderOrdItem);
+$('ordChips').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  state.ordSrc = b.getAttribute('aria-pressed') === 'true' ? '' : b.dataset.v;
+  [...$('ordChips').children].forEach(c => c.setAttribute('aria-pressed', c.dataset.v === state.ordSrc));
+  if (state.ordSrc) $('ordSup').value = '';
+});
+$('ordSup').addEventListener('input', () => {
+  if ($('ordSup').value.trim()){ state.ordSrc = ''; [...$('ordChips').children].forEach(c => c.setAttribute('aria-pressed', 'false')); }
+});
+$('ordCancel').onclick = () => $('ordScrim').classList.add('hidden');
+$('ordScrim').addEventListener('click', e => { if (e.target.id === 'ordScrim') $('ordScrim').classList.add('hidden'); });
+$('itOrder').onclick = () => { const n = state.current && state.current.n; $('itemScrim').classList.add('hidden'); openOrder(n); };
+$('ordSave').onclick = async () => {
+  const it = findItem($('ordItem').value), q = num($('ordQty').value);
+  const sup = state.ordSrc || $('ordSup').value.trim(), err = $('ordErr');
+  if (!it){ err.textContent = 'Pilih item dari daftar. Kalau tidak ada, minta supervisor menambahkannya di Master Item Gudang.'; return; }
+  if (!(q > 0)){ err.textContent = 'Isi jumlah yang dipesan (angka lebih dari 0).'; $('ordQty').focus(); return; }
+  if (!sup){ err.textContent = 'Isi beli di mana (pilih atau tulis).'; return; }
+  const by = askName(); if (!by){ err.textContent = 'Isi nama dulu supaya tercatat siapa yang memesan.'; return; }
+  err.textContent = '';
+  const btn = $('ordSave'); btn.disabled = true; btn.textContent = 'Menyimpan…';
+  try {
+    const r = await api({ action: 'order', data: JSON.stringify({ on: true, extra: true, by, tanggal: $('ordDate').value,
+      items: [{ n: it.n, qty: q, u: it.u, sup, note: $('ordNote').value.trim() }] }) });
+    const key = s => String(s || '').trim().toLowerCase();
+    state.items.forEach(x => { x.ord = r.orders[key(x.n)] || null; }); renderList();
+    if (state.po){ state.po.orders = r.orders; renderPo(); }
+    $('ordScrim').classList.add('hidden');
+    toast(`${it.n} dicatat sudah dipesan.`);
+  } catch(e){ err.textContent = e.message; }
+  finally { btn.disabled = false; btn.textContent = 'Simpan pesanan'; }
+};
 
 /* ---------- Mulai ---------- */
 window.addEventListener('beforeunload', e => { if (state.cart.length){ e.preventDefault(); e.returnValue = ''; } });
