@@ -335,26 +335,28 @@ function load(k){ try { return localStorage.getItem(k) || ''; } catch(e){ return
    Google sering diarahkan Apps Script ke halaman error; tanpa cookie, permintaan
    diperlakukan seperti mode incognito, jadi selalu jalan.
    Cadangan: JSONP (pola lama) kalau fetch gagal di browser tertentu. */
-async function api(params){
+async function api(params, opt){
+  opt = opt || {};
   const q = new URLSearchParams({ ...params, pin: load(LS.pin) });
   let data;
   try {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 25000);
+    const timer = setTimeout(() => ctrl.abort(), opt.timeout || 25000);
     const res = await fetch(API_URL + '?' + q.toString(), { credentials: 'omit', redirect: 'follow', signal: ctrl.signal });
     clearTimeout(timer);
     data = await res.json();
   } catch (e) {
-    data = await apiJsonp(params); // cadangan
+    if (opt.noRetry && e.name === 'AbortError') throw new Error('Proses masih berjalan di server. Tunggu ±1 menit, lalu buka ulang tab ini.');
+    data = await apiJsonp(params, opt.timeout); // cadangan
   }
   if (!data || !data.ok) throw new Error((data && data.error) || 'Gagal memproses.');
   return data;
 }
-function apiJsonp(params){
+function apiJsonp(params, ms){
   return new Promise((resolve, reject) => {
     const cb = 'cb_' + newSid();
     const s = document.createElement('script');
-    const timer = setTimeout(() => { done(); reject(new Error('Koneksi lambat. Cek sinyal lalu coba lagi.')); }, 25000);
+    const timer = setTimeout(() => { done(); reject(new Error('Koneksi lambat. Cek sinyal lalu coba lagi.')); }, ms || 25000);
     function done(){ clearTimeout(timer); delete window[cb]; s.remove(); }
     window[cb] = data => { done(); resolve(data); };
     s.onerror = () => { done(); reject(new Error('Tidak bisa terhubung ke server. Coba buka di mode incognito, atau keluar dari akun Google lain di browser ini.')); };
@@ -597,7 +599,11 @@ function renderPo(){
   // pesanan terbuka yang itemnya tidak ada di PO WA saat ini = order di luar PO
   const inPo = new Set(r.blocks.flatMap(b => b.items.map(it => key(it.n))));
   const extras = Object.entries(r.orders).filter(([k]) => !inPo.has(k));
-  const extraHtml = `<button class="btn ordNew" id="poExtraBtn">+ Catat pesanan di luar PO</button>` +
+  const g = r.gen;
+  const genHtml = `<div class="poCard"><div class="poHead"><h3>PO Gudang</h3></div>
+      <p class="poHint" style="margin:4px 0 0">${g ? 'Terakhir dibuat: <b>' + esc(fmtGen(g)) + '</b>' : 'Belum ada data pembuatan'}</p>
+      <button class="btn primary" id="poGenBtn" style="width:100%;margin-top:10px">Buat / perbarui PO hari ini</button></div>`;
+  const extraHtml = genHtml + `<button class="btn ordNew" id="poExtraBtn">+ Catat pesanan di luar PO</button>` +
     (extras.length ? `<div class="poCard"><div class="poHead"><h3>Pesanan di luar PO</h3><small>${extras.length} item</small></div>
       <ul class="poList">${extras.map(([k, o]) => `<li><label>
         <input type="checkbox" data-x="${esc(k)}" checked>
@@ -611,7 +617,7 @@ function renderPo(){
         <div class="poHead"><h3>${esc(b.sup)}</h3><small>${esc(b.date)} · ${done}/${b.items.length} dipesan</small></div>
         <div class="poBtns">
           <button class="btn ghost" data-copy="${bi}">Salin teks</button>
-          <button class="btn wa" data-wa="${bi}">Buka WhatsApp</button>
+          <button class="btn wa" data-wa="${bi}">${b.wa ? 'Kirim ke WA' : 'Buka WhatsApp'}</button>
         </div>
         <ul class="poList">${b.items.map((it, ii) => {
           const o = r.orders[key(it.n)];
@@ -653,11 +659,22 @@ async function setOrder(items, on){
 $('po').addEventListener('click', async e => {
   const t = e.target;
   if (t.id === 'poExtraBtn'){ openOrder(''); return; }
+  if (t.id === 'poGenBtn'){
+    if (!confirm('Buat PO Gudang dari saldo terbaru? Proses bisa ±1 menit. PO lama akan diganti.')) return;
+    t.disabled = true; t.textContent = 'Membuat PO… (±1 menit)';
+    try {
+      const r = await api({ action: 'genpo', by: load(LS.name) || '' }, { timeout: 180000, noRetry: true });
+      state.po = r; renderPo();
+      toast(r.generated && r.generated.suppliers ? `PO Gudang dibuat: ${r.generated.suppliers} supplier.` : 'Saldo gudang aman, tidak ada yang perlu dipesan.');
+    } catch(err){ toast(err.message, true); t.disabled = false; t.textContent = 'Buat / perbarui PO hari ini'; }
+    return;
+  }
   if (t.dataset.copy !== undefined){
     const ok = await copyText(state.po.blocks[+t.dataset.copy].text);
     toast(ok ? 'Teks PO disalin. Tempel di chat WA supplier.' : 'Gagal menyalin. Tekan lama teksnya lalu salin manual.', !ok);
   } else if (t.dataset.wa !== undefined){
-    window.open('https://wa.me/?text=' + encodeURIComponent(state.po.blocks[+t.dataset.wa].text), '_blank');
+    const blk = state.po.blocks[+t.dataset.wa];
+    window.open('https://wa.me/' + (blk.wa || '') + '?text=' + encodeURIComponent(blk.text), '_blank');
   } else if (t.dataset.all !== undefined){
     const b = state.po.blocks[+t.dataset.all];
     const key = s => String(s || '').trim().toLowerCase();
@@ -683,6 +700,13 @@ $('po').addEventListener('change', async e => {
   try { await setOrder([{ n: it.n, qty: it.qty, u: it.u, sup: b.sup }], cb.checked); toast(cb.checked ? `${it.label || it.n} ditandai sudah dipesan.` : `Tanda pesan ${it.label || it.n} dibatalkan.`); }
   catch(err){ toast(err.message, true); cb.checked = !cb.checked; cb.disabled = false; }
 });
+
+function fmtGen(g){
+  const d = new Date(g.at); if (isNaN(d)) return '';
+  const HR = ['Min','Sen','Sel','Rab','Kam','Jum','Sab'];
+  const p2 = n => String(n).padStart(2, '0');
+  return `${HR[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1} ${p2(d.getHours())}:${p2(d.getMinutes())}` + (g.by ? ` · ${g.by}` : '');
+}
 
 /* ---------- Order di luar PO ---------- */
 const ORDER_TOKO = ['Shopee', 'Tokopedia', 'Toko offline'];
